@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PDFParse } from 'pdf-parse';
-import mammoth from 'mammoth';
-import Anthropic from '@anthropic-ai/sdk';
+import { NextRequest, NextResponse } from "next/server";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
+import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -9,107 +9,169 @@ const anthropic = new Anthropic({
 
 // Defines the exact JSON shape we want Claude to return
 const resumeSchema = {
-  name: 'extract_resume',
-  description: 'Extract structured resume data from raw text',
+  name: "extract_resume",
+  description: "Extract structured resume data from raw text",
   input_schema: {
-    type: 'object' as const,
+    type: "object" as const,
     properties: {
-      fullName: { type: 'string' },
-      email: { type: 'string' },
-      phone: { type: 'string' },
-      location: { type: 'string' },
-      summary: { type: 'string', description: 'A short professional summary, or empty string if none present' },
+      fullName: { type: "string" },
+      email: { type: "string" },
+      phone: { type: "string" },
+      location: { type: "string" },
+      summary: {
+        type: "string",
+        description:
+          "A short professional summary, or empty string if none present",
+      },
       skills: {
-        type: 'array',
-        items: { type: 'string' },
+        type: "array",
+        items: { type: "string" },
       },
       workExperiences: {
-        type: 'array',
+        type: "array",
         items: {
-          type: 'object',
+          type: "object",
           properties: {
-            company: { type: 'string' },
-            title: { type: 'string' },
-            startDate: { type: 'string' },
-            endDate: { type: 'string', description: '"Present" if current job' },
+            company: { type: "string" },
+            title: { type: "string" },
+            startDate: { type: "string" },
+            endDate: {
+              type: "string",
+              description: '"Present" if current job',
+            },
             bulletPoints: {
-              type: 'array',
-              items: { type: 'string' },
+              type: "array",
+              items: { type: "string" },
             },
           },
-          required: ['company', 'title', 'bulletPoints'],
+          required: ["company", "title", "bulletPoints"],
         },
       },
       education: {
-        type: 'array',
+        type: "array",
         items: {
-          type: 'object',
+          type: "object",
           properties: {
-            school: { type: 'string' },
-            degree: { type: 'string' },
-            startDate: { type: 'string' },
-            endDate: { type: 'string' },
+            school: { type: "string" },
+            degreeLevel: {
+              type: "string",
+              description:
+                'The level of degree, e.g. "High School Diploma", "Bachelor\'s", "Master\'s", "Associate\'s", "PhD"',
+            },
+            majors: {
+              type: "array",
+              items: { type: "string" },
+              description: "One or more majors/fields of study for this degree",
+            },
+            minor: {
+              type: "string",
+              description: "Minor field of study, or empty string if none",
+            },
+            startDate: { type: "string" },
+            endDate: { type: "string" },
           },
-          required: ['school'],
+          required: ["school", "majors"],
+        },
+      },
+      certificationsAwards: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            issuer: {
+              type: "string",
+              description:
+                "Organization that granted it, or empty string if not applicable",
+            },
+            date: { type: "string" },
+            type: {
+              type: "string",
+              description: '"certification" or "award"',
+            },
+          },
+          required: ["title", "type"],
         },
       },
     },
-    required: ['fullName', 'workExperiences', 'education', 'skills'],
+    required: [
+      "fullName",
+      "workExperiences",
+      "education",
+      "skills",
+      "certificationsAwards",
+    ],
   },
 };
 
 async function extractTextFromFile(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  if (file.type === 'application/pdf') {
+  if (file.type === "application/pdf") {
     const parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
     await parser.destroy();
     return result.text;
   } else if (
-    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    file.type ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
   } else {
-    throw new Error('Unsupported file type');
+    throw new Error("Unsupported file type");
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const file = formData.get('resume') as File | null;
+    const file = formData.get("resume") as File | null;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     const extractedText = await extractTextFromFile(file);
 
-    const useRealApi = process.env.USE_CLAUDE_API === 'true';
+    const useRealApi = process.env.USE_CLAUDE_API === "true";
 
     if (!useRealApi) {
       return NextResponse.json({
         extractedText,
         structuredData: {
-          fullName: 'Mock Name',
-          email: 'mock@example.com',
-          phone: '555-0100',
-          location: 'Mock City, ST',
-          summary: '',
-          skills: ['Mock Skill 1', 'Mock Skill 2'],
+          fullName: "Mock Name",
+          email: "mock@example.com",
+          phone: "555-0100",
+          location: "Mock City, ST",
+          summary: "",
+          skills: ["Mock Skill 1", "Mock Skill 2"],
           workExperiences: [
             {
-              company: 'Mock Company',
-              title: 'Mock Title',
-              startDate: '2020-01',
-              endDate: 'Present',
-              bulletPoints: ['Mock bullet point one', 'Mock bullet point two'],
+              company: "Mock Company",
+              title: "Mock Title",
+              startDate: "2020-01",
+              endDate: "Present",
+              bulletPoints: ["Mock bullet point one", "Mock bullet point two"],
             },
           ],
           education: [
-            { school: 'Mock University', degree: 'Mock Degree', startDate: '2016', endDate: '2020' },
+            {
+              school: "Mock University",
+              degreeLevel: "Bachelor's",
+              majors: ["Mock Major"],
+              minor: "",
+              startDate: "2016",
+              endDate: "2020",
+            },
+          ],
+          certificationsAwards: [
+            {
+              title: "Mock Certification",
+              issuer: "Mock Issuer",
+              date: "2021",
+              type: "certification",
+            },
           ],
         },
         mock: true,
@@ -117,27 +179,30 @@ export async function POST(req: NextRequest) {
     }
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2000,
       tools: [resumeSchema],
-      tool_choice: { type: 'tool', name: 'extract_resume' },
+      tool_choice: { type: "tool", name: "extract_resume" },
       messages: [
         {
-          role: 'user',
+          role: "user",
           content: `Extract structured data from this resume text:\n\n${extractedText}`,
         },
       ],
     });
 
-    const toolUseBlock = message.content.find((block) => block.type === 'tool_use');
-    const structuredData = toolUseBlock && 'input' in toolUseBlock ? toolUseBlock.input : null;
+    const toolUseBlock = message.content.find(
+      (block) => block.type === "tool_use",
+    );
+    const structuredData =
+      toolUseBlock && "input" in toolUseBlock ? toolUseBlock.input : null;
 
     return NextResponse.json({ extractedText, structuredData, mock: false });
   } catch (error) {
-    console.error('Resume parsing error:', error);
+    console.error("Resume parsing error:", error);
     return NextResponse.json(
-      { error: 'Failed to process resume' },
-      { status: 500 }
+      { error: "Failed to process resume" },
+      { status: 500 },
     );
   }
 }

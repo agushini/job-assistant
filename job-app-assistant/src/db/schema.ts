@@ -30,9 +30,21 @@ export const education = pgTable('education', {
   id: uuid('id').primaryKey().defaultRandom(),
   profileId: uuid('profile_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
   school: text('school').notNull(),
-  degree: text('degree'),
+  degreeLevel: text('degree_level'), // e.g. "Bachelor's", "Master's", "Associate's", "PhD"
+  majors: jsonb('majors').$type<string[]>().default([]),
+  minor: text('minor'),
   startDate: text('start_date'),
   endDate: text('end_date'),
+});
+
+// Certifications & Awards — many:1 with profiles
+export const certificationsAwards = pgTable('certifications_awards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  profileId: uuid('profile_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  issuer: text('issuer'),
+  date: text('date'),
+  type: text('type'), // 'certification' | 'award'
 });
 
 // Supplemental Q&A — many:1 with profiles

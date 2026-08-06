@@ -8,6 +8,13 @@
       "when": 1785965693810,
       "tag": "0000_lethal_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786048263885,
+      "tag": "0001_swift_sabretooth",
+      "breakpoints": true
     }
   ]
 }
