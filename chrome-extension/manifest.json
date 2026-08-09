@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Job Application Assistant",
+  "version": "0.1.0",
+  "description": "AI-assisted job application filling",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://boards.greenhouse.io/*",
+        "*://job-boards.greenhouse.io/*",
+        "*://jobs.lever.co/*",
+        "*://*.myworkdayjobs.com/*",
+        "*://jobs.ashbyhq.com/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
