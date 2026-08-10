@@ -3,7 +3,37 @@ console.log(
   window.location.href,
 );
 
+// --- Design tokens for on-page highlighting ---
+// Defined as CSS custom properties on :root, so colors can be changed
+// in exactly one place if the visual style needs to evolve later.
+
+const styleTag = document.createElement('style');
+styleTag.textContent = `
+  :root {
+    --jaa-confidence-high: #2e7d32;
+    --jaa-confidence-medium: #ed6c02;
+    --jaa-confidence-low: #c62828;
+    --jaa-outline-width: 2px;
+    --jaa-outline-offset: 1px;
+  }
+`;
+document.head.appendChild(styleTag);
+
 // --- Label/context detection helpers ---
+
+function highlightField(input, confidence) {
+  const tokenMap = {
+    high: 'var(--jaa-confidence-high)',
+    medium: 'var(--jaa-confidence-medium)',
+    low: 'var(--jaa-confidence-low)',
+  };
+
+  const color = tokenMap[confidence] || tokenMap.low;
+
+  input.style.outline = `var(--jaa-outline-width) solid ${color}`;
+  input.style.outlineOffset = 'var(--jaa-outline-offset)';
+  input.setAttribute('data-jaa-confidence', confidence);
+}
 
 function getAssociatedLabel(input) {
   if (input.id) {
@@ -21,6 +51,7 @@ function getNearbyText(input) {
 
   let sibling = container.previousElementSibling;
   let attempts = 0;
+
   while (sibling && attempts < 3) {
     const text = sibling.textContent?.trim();
     if (text && text.length > 0 && text.length < 150) {
@@ -83,25 +114,11 @@ function isFillableField(input) {
 
 // --- Fill helpers ---
 
-function setNativeValue(element, value) {
-  const prototype = Object.getPrototypeOf(element);
-  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-  const nativeSetter = descriptor?.set;
-
-  if (nativeSetter) {
-    nativeSetter.call(element, value);
-  } else {
-    element.value = value;
-  }
-
-  element.dispatchEvent(new Event("input", { bubbles: true }));
-  element.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
 function fillNativeSelect(selectEl, value) {
   const options = Array.from(selectEl.options);
   const match = options.find(
-    (opt) => opt.textContent.trim().toLowerCase() === value.trim().toLowerCase(),
+    (opt) =>
+      opt.textContent.trim().toLowerCase() === value.trim().toLowerCase(),
   );
 
   if (!match) {
@@ -118,56 +135,146 @@ function fillNativeSelect(selectEl, value) {
   return true;
 }
 
-async function fillCustomDropdown(inputEl, value) {
-  inputEl.focus();
-  inputEl.click();
+function setNativeValue(element, value) {
+  const prototype = Object.getPrototypeOf(element);
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+  const nativeSetter = descriptor?.set;
 
-  setNativeValue(inputEl, value);
+  if (nativeSetter) {
+    nativeSetter.call(element, value);
+  } else {
+    element.value = value;
+  }
 
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+}
 
-  const optionEls = document.querySelectorAll('[class*="option"]');
-  const match = Array.from(optionEls).find((el) =>
-    el.textContent?.trim().toLowerCase().includes(value.trim().toLowerCase()),
+function findMatchingOption(value) {
+  const ariaOptions = document.querySelectorAll('[role="option"]');
+  const ariaMatch = Array.from(ariaOptions).find(
+    (el) =>
+      isVisible(el) &&
+      el.textContent?.trim().toLowerCase().includes(value.trim().toLowerCase()),
   );
+  if (ariaMatch) return ariaMatch;
+
+  const fallbackCandidates = document.querySelectorAll(
+    'li, [role="listbox"] *, [class*="option" i]',
+  );
+  const fallbackMatch = Array.from(fallbackCandidates).find(
+    (el) =>
+      isVisible(el) &&
+      el.textContent?.trim().toLowerCase() === value.trim().toLowerCase(),
+  );
+  return fallbackMatch || null;
+}
+
+async function fillInteractiveWidget(input, value) {
+  input.focus();
+  input.click();
+
+  setNativeValue(input, value);
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const match = findMatchingOption(value);
 
   if (match) {
     match.click();
     return true;
   }
 
-  inputEl.blur();
+  input.blur();
   return false;
 }
 
-// --- Field scanning — runs immediately on page load ---
+async function fillField(input, value) {
+  if (input.tagName === "SELECT") {
+    return fillNativeSelect(input, value);
+  }
 
-const allInputsOnLoad = document.querySelectorAll("input, textarea, select");
+  setNativeValue(input, value);
 
-const fields = Array.from(allInputsOnLoad)
-  .filter(isFillableField)
-  .map((input, index) => {
-    const associatedLabel = getAssociatedLabel(input);
-    const nearbyText = getNearbyText(input);
-    return {
-      index,
-      tag: input.tagName,
-      type: input.type || null,
-      name: input.name || null,
-      id: input.id || null,
-      placeholder: input.placeholder || null,
-      ariaLabel: input.getAttribute("aria-label") || null,
-      associatedLabel,
-      nearbyText,
-      isLikelyEeo: isLikelyEeoField(associatedLabel || nearbyText),
-    };
-  });
+  await new Promise((resolve) => setTimeout(resolve, 150));
 
-console.log(`Found ${fields.length} form field(s), sending to background worker...`);
-console.log("Field details:", fields);
+  if (input.value === value) {
+    return true;
+  }
 
-chrome.runtime.sendMessage({ type: "FIELDS_DETECTED", fields }, (response) => {
-  console.log("Background worker responded:", response);
+  return await fillInteractiveWidget(input, value);
+}
+
+// --- Field scanning — only sends NEWLY discovered fields, to control cost ---
+
+const alreadyRequestedFields = new Set();
+
+function fieldSignature(fieldData) {
+  return `${fieldData.id || ""}|${fieldData.name || ""}|${fieldData.associatedLabel || ""}`;
+}
+
+function scanAndReportFields() {
+  const allInputsOnPage = document.querySelectorAll("input, textarea, select");
+
+  const allFields = Array.from(allInputsOnPage)
+    .filter(isFillableField)
+    .map((input, index) => {
+      const associatedLabel = getAssociatedLabel(input);
+      const nearbyText = getNearbyText(input);
+      return {
+        index,
+        tag: input.tagName,
+        type: input.type || null,
+        name: input.name || null,
+        id: input.id || null,
+        placeholder: input.placeholder || null,
+        ariaLabel: input.getAttribute("aria-label") || null,
+        associatedLabel,
+        nearbyText,
+        isLikelyEeo: isLikelyEeoField(associatedLabel || nearbyText),
+      };
+    });
+
+  const newFields = allFields.filter(
+    (f) => !alreadyRequestedFields.has(fieldSignature(f)),
+  );
+
+  if (newFields.length === 0) {
+    return; // nothing new — skip entirely, no backend/API call
+  }
+
+  newFields.forEach((f) => alreadyRequestedFields.add(fieldSignature(f)));
+
+  console.log(
+    `Found ${newFields.length} NEW form field(s), sending to background worker...`,
+  );
+  console.log("New field details:", newFields);
+
+  chrome.runtime.sendMessage(
+    { type: "FIELDS_DETECTED", fields: newFields },
+    (response) => {
+      console.log("Background worker responded:", response);
+    },
+  );
+}
+
+// Run once immediately, in case the page is already fully rendered
+scanAndReportFields();
+
+// --- Watch for dynamically-added content (tabs, multi-step forms, etc.) ---
+
+let debounceTimer = null;
+
+const observer = new MutationObserver(() => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    scanAndReportFields();
+  }, 500);
+});
+
+observer.observe(document.body, {
+  childList: true,
+  subtree: true,
 });
 
 // --- Fill listener ---
@@ -181,20 +288,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     (async () => {
       for (const mapping of message.mappings) {
-        if (!mapping.value) continue;
-
         const targetInput = visibleInputs[mapping.fieldIndex];
         if (!targetInput) continue;
 
-        if (targetInput.tagName === "SELECT") {
-          fillNativeSelect(targetInput, mapping.value);
-        } else if (targetInput.getAttribute("role") === "combobox") {
-          await fillCustomDropdown(targetInput, mapping.value);
-        } else {
-          setNativeValue(targetInput, mapping.value);
+        if (!mapping.value) {
+          // Nothing filled, but still mark it so you know we looked at it
+          highlightField(targetInput, 'low');
+          continue;
         }
 
-        console.log(`Filled field ${mapping.fieldIndex} with "${mapping.value}"`);
+        const success = await fillField(targetInput, mapping.value);
+        if (success) {
+          highlightField(targetInput, mapping.confidence);
+        }
+        console.log(
+          `Field ${mapping.fieldIndex}: ${success ? "filled" : "FAILED"} with "${mapping.value}"`,
+        );
       }
     })();
 
