@@ -3,6 +3,10 @@ console.log(
   window.location.href,
 );
 
+// Globals 
+let cachedJobDescription = null;
+let jobDescriptionSent = false;
+
 // --- Design tokens for on-page highlighting ---
 // Defined as CSS custom properties on :root, so colors can be changed
 // in exactly one place if the visual style needs to evolve later.
@@ -209,6 +213,50 @@ async function fillField(input, value) {
 
 const alreadyRequestedFields = new Set();
 
+function extractJobDescription() {
+  // Common, fairly reliable selectors across major ATS platforms —
+  // checked in order, first match wins.
+  const knownSelectors = [
+    '[class*="job-description" i]',
+    '[class*="jobDescription" i]',
+    '#content .job__description',
+    '[data-testid*="job-description" i]',
+    'article',
+  ];
+
+  for (const selector of knownSelectors) {
+    const el = document.querySelector(selector);
+    if (el && isVisible(el)) {
+      const text = el.textContent?.trim();
+      if (text && text.length > 200) {
+        return text;
+      }
+    }
+  }
+
+  // Fallback: find the largest block of visible text on the page,
+  // under the assumption that the JD is usually the longest
+  // continuous piece of content on an application/job page.
+  const candidates = document.querySelectorAll('div, section, article');
+  let best = null;
+  let bestLength = 0;
+
+  candidates.forEach((el) => {
+    if (!isVisible(el)) return;
+    // Skip containers that themselves contain form fields —
+    // we want prose, not the application form itself.
+    if (el.querySelector('input, textarea, select')) return;
+
+    const text = el.textContent?.trim() || '';
+    if (text.length > bestLength) {
+      bestLength = text.length;
+      best = text;
+    }
+  });
+
+  return bestLength > 200 ? best : null;
+}
+
 function fieldSignature(fieldData) {
   return `${fieldData.id || ""}|${fieldData.name || ""}|${fieldData.associatedLabel || ""}`;
 }
@@ -239,23 +287,34 @@ function scanAndReportFields() {
     (f) => !alreadyRequestedFields.has(fieldSignature(f)),
   );
 
+  // Only extract the JD once — cache it, don't redo this work on every scan
+  if (!cachedJobDescription) {
+    cachedJobDescription = extractJobDescription();
+  }
+
   if (newFields.length === 0) {
-    return; // nothing new — skip entirely, no backend/API call
+    return;
   }
 
   newFields.forEach((f) => alreadyRequestedFields.add(fieldSignature(f)));
 
-  console.log(
-    `Found ${newFields.length} NEW form field(s), sending to background worker...`,
-  );
-  console.log("New field details:", newFields);
+  // Only include the JD in the payload the FIRST time we send it —
+  // the backend can hold onto it from there (see note below).
+  const payload = {
+    type: "FIELDS_DETECTED",
+    fields: newFields,
+  };
 
-  chrome.runtime.sendMessage(
-    { type: "FIELDS_DETECTED", fields: newFields },
-    (response) => {
-      console.log("Background worker responded:", response);
-    },
-  );
+  if (!jobDescriptionSent && cachedJobDescription) {
+    payload.jobDescription = cachedJobDescription;
+    jobDescriptionSent = true;
+  }
+
+  console.log(`Found ${newFields.length} NEW form field(s), sending to background worker...`);
+
+  chrome.runtime.sendMessage(payload, (response) => {
+    console.log("Background worker responded:", response);
+  });
 }
 
 // Run once immediately, in case the page is already fully rendered
