@@ -1,18 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import styles from './profile.module.css';
+import { useState, useEffect } from "react";
+import styles from "./profile.module.css";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null);
-  const [skillsText, setSkillsText] = useState('');
+  const [skillsText, setSkillsText] = useState("");
   const [workExperiences, setWorkExperiences] = useState<any[]>([]);
   const [educationList, setEducationList] = useState<any[]>([]);
   const [certs, setCerts] = useState<any[]>([]);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState("");
+  const [supplementalQa, setSupplementalQA] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/profile')
+    fetch("/api/profile")
       .then((res) => res.json())
       .then((data) => {
         if (data.error) {
@@ -20,35 +21,38 @@ export default function ProfilePage() {
           return;
         }
         setProfile(data.profile);
-        setSkillsText((data.profile.skills ?? []).join(', '));
+        setSkillsText((data.profile.skills ?? []).join(", "));
         setWorkExperiences(data.workExperiences);
         setEducationList(data.education);
         setCerts(data.certificationsAwards);
+        setSupplementalQA(data.supplementalQa);
       });
   }, []);
 
   const handleSave = async () => {
-    setStatus('Saving...');
+    setStatus("Saving...");
     const skillsArray = skillsText
-      .split(',')
+      .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
-    const res = await fetch('/api/profile', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profile: { ...profile, skills: skillsArray },
         workExperiences,
         education: educationList,
         certificationsAwards: certs,
+        supplementalQa: supplementalQa,
       }),
     });
     const data = await res.json();
-    setStatus(data.success ? 'Saved!' : `Error: ${data.error}`);
+    setStatus(data.success ? "Saved!" : `Error: ${data.error}`);
   };
 
-  if (!profile) return <div className={styles.page}>{status || 'Loading...'}</div>;
+  if (!profile)
+    return <div className={styles.page}>{status || "Loading..."}</div>;
 
   return (
     <div className={styles.page}>
@@ -62,8 +66,10 @@ export default function ProfilePage() {
           <label className={styles.label}>Full Name</label>
           <input
             className={styles.input}
-            value={profile.fullName ?? ''}
-            onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+            value={profile.fullName ?? ""}
+            onChange={(e) =>
+              setProfile({ ...profile, fullName: e.target.value })
+            }
           />
         </div>
 
@@ -71,7 +77,7 @@ export default function ProfilePage() {
           <label className={styles.label}>Email</label>
           <input
             className={styles.input}
-            value={profile.email ?? ''}
+            value={profile.email ?? ""}
             onChange={(e) => setProfile({ ...profile, email: e.target.value })}
           />
         </div>
@@ -80,7 +86,7 @@ export default function ProfilePage() {
           <label className={styles.label}>Phone</label>
           <input
             className={styles.input}
-            value={profile.phone ?? ''}
+            value={profile.phone ?? ""}
             onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
           />
         </div>
@@ -89,8 +95,10 @@ export default function ProfilePage() {
           <label className={styles.label}>Location</label>
           <input
             className={styles.input}
-            value={profile.location ?? ''}
-            onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+            value={profile.location ?? ""}
+            onChange={(e) =>
+              setProfile({ ...profile, location: e.target.value })
+            }
           />
         </div>
 
@@ -113,7 +121,7 @@ export default function ProfilePage() {
               <label className={styles.label}>Company</label>
               <input
                 className={styles.input}
-                value={exp.company ?? ''}
+                value={exp.company ?? ""}
                 onChange={(e) => {
                   const updated = [...workExperiences];
                   updated[i] = { ...exp, company: e.target.value };
@@ -125,7 +133,7 @@ export default function ProfilePage() {
               <label className={styles.label}>Title</label>
               <input
                 className={styles.input}
-                value={exp.title ?? ''}
+                value={exp.title ?? ""}
                 onChange={(e) => {
                   const updated = [...workExperiences];
                   updated[i] = { ...exp, title: e.target.value };
@@ -138,7 +146,7 @@ export default function ProfilePage() {
                 <label className={styles.label}>Start Date</label>
                 <input
                   className={styles.input}
-                  value={exp.startDate ?? ''}
+                  value={exp.startDate ?? ""}
                   onChange={(e) => {
                     const updated = [...workExperiences];
                     updated[i] = { ...exp, startDate: e.target.value };
@@ -150,7 +158,7 @@ export default function ProfilePage() {
                 <label className={styles.label}>End Date</label>
                 <input
                   className={styles.input}
-                  value={exp.endDate ?? ''}
+                  value={exp.endDate ?? ""}
                   onChange={(e) => {
                     const updated = [...workExperiences];
                     updated[i] = { ...exp, endDate: e.target.value };
@@ -160,20 +168,29 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className={styles.formGroup}>
-              <label className={styles.label}>Bullet Points (one per line)</label>
+              <label className={styles.label}>
+                Bullet Points (one per line)
+              </label>
               <textarea
                 className={styles.textarea}
-                value={(exp.bulletPoints ?? []).join('\n')}
+                value={(exp.bulletPoints ?? []).join("\n")}
                 onChange={(e) => {
                   const updated = [...workExperiences];
-                  updated[i] = { ...exp, bulletPoints: e.target.value.split('\n') };
+                  updated[i] = {
+                    ...exp,
+                    bulletPoints: e.target.value.split("\n"),
+                  };
                   setWorkExperiences(updated);
                 }}
               />
             </div>
             <button
               className={styles.removeButton}
-              onClick={() => setWorkExperiences(workExperiences.filter((_, idx) => idx !== i))}
+              onClick={() =>
+                setWorkExperiences(
+                  workExperiences.filter((_, idx) => idx !== i),
+                )
+              }
             >
               Remove
             </button>
@@ -184,7 +201,13 @@ export default function ProfilePage() {
           onClick={() =>
             setWorkExperiences([
               ...workExperiences,
-              { company: '', title: '', startDate: '', endDate: '', bulletPoints: [] },
+              {
+                company: "",
+                title: "",
+                startDate: "",
+                endDate: "",
+                bulletPoints: [],
+              },
             ])
           }
         >
@@ -201,7 +224,7 @@ export default function ProfilePage() {
               <label className={styles.label}>School</label>
               <input
                 className={styles.input}
-                value={edu.school ?? ''}
+                value={edu.school ?? ""}
                 onChange={(e) => {
                   const updated = [...educationList];
                   updated[i] = { ...edu, school: e.target.value };
@@ -213,7 +236,7 @@ export default function ProfilePage() {
               <label className={styles.label}>Degree Level</label>
               <input
                 className={styles.input}
-                value={edu.degreeLevel ?? ''}
+                value={edu.degreeLevel ?? ""}
                 placeholder="e.g. Bachelor's"
                 onChange={(e) => {
                   const updated = [...educationList];
@@ -226,12 +249,12 @@ export default function ProfilePage() {
               <label className={styles.label}>Majors (comma-separated)</label>
               <input
                 className={styles.input}
-                value={(edu.majors ?? []).join(', ')}
+                value={(edu.majors ?? []).join(", ")}
                 onChange={(e) => {
                   const updated = [...educationList];
                   updated[i] = {
                     ...edu,
-                    majors: e.target.value.split(',').map((m) => m.trim()),
+                    majors: e.target.value.split(",").map((m) => m.trim()),
                   };
                   setEducationList(updated);
                 }}
@@ -241,7 +264,7 @@ export default function ProfilePage() {
               <label className={styles.label}>Minor</label>
               <input
                 className={styles.input}
-                value={edu.minor ?? ''}
+                value={edu.minor ?? ""}
                 onChange={(e) => {
                   const updated = [...educationList];
                   updated[i] = { ...edu, minor: e.target.value };
@@ -254,7 +277,7 @@ export default function ProfilePage() {
                 <label className={styles.label}>Start Date</label>
                 <input
                   className={styles.input}
-                  value={edu.startDate ?? ''}
+                  value={edu.startDate ?? ""}
                   onChange={(e) => {
                     const updated = [...educationList];
                     updated[i] = { ...edu, startDate: e.target.value };
@@ -266,7 +289,7 @@ export default function ProfilePage() {
                 <label className={styles.label}>End Date</label>
                 <input
                   className={styles.input}
-                  value={edu.endDate ?? ''}
+                  value={edu.endDate ?? ""}
                   onChange={(e) => {
                     const updated = [...educationList];
                     updated[i] = { ...edu, endDate: e.target.value };
@@ -277,7 +300,9 @@ export default function ProfilePage() {
             </div>
             <button
               className={styles.removeButton}
-              onClick={() => setEducationList(educationList.filter((_, idx) => idx !== i))}
+              onClick={() =>
+                setEducationList(educationList.filter((_, idx) => idx !== i))
+              }
             >
               Remove
             </button>
@@ -288,7 +313,14 @@ export default function ProfilePage() {
           onClick={() =>
             setEducationList([
               ...educationList,
-              { school: '', degreeLevel: '', majors: [], minor: '', startDate: '', endDate: '' },
+              {
+                school: "",
+                degreeLevel: "",
+                majors: [],
+                minor: "",
+                startDate: "",
+                endDate: "",
+              },
             ])
           }
         >
@@ -305,7 +337,7 @@ export default function ProfilePage() {
               <label className={styles.label}>Title</label>
               <input
                 className={styles.input}
-                value={cert.title ?? ''}
+                value={cert.title ?? ""}
                 onChange={(e) => {
                   const updated = [...certs];
                   updated[i] = { ...cert, title: e.target.value };
@@ -317,7 +349,7 @@ export default function ProfilePage() {
               <label className={styles.label}>Issuer</label>
               <input
                 className={styles.input}
-                value={cert.issuer ?? ''}
+                value={cert.issuer ?? ""}
                 onChange={(e) => {
                   const updated = [...certs];
                   updated[i] = { ...cert, issuer: e.target.value };
@@ -330,7 +362,7 @@ export default function ProfilePage() {
                 <label className={styles.label}>Date</label>
                 <input
                   className={styles.input}
-                  value={cert.date ?? ''}
+                  value={cert.date ?? ""}
                   onChange={(e) => {
                     const updated = [...certs];
                     updated[i] = { ...cert, date: e.target.value };
@@ -342,7 +374,7 @@ export default function ProfilePage() {
                 <label className={styles.label}>Type</label>
                 <input
                   className={styles.input}
-                  value={cert.type ?? ''}
+                  value={cert.type ?? ""}
                   placeholder="certification or award"
                   onChange={(e) => {
                     const updated = [...certs];
@@ -363,10 +395,68 @@ export default function ProfilePage() {
         <button
           className={styles.addButton}
           onClick={() =>
-            setCerts([...certs, { title: '', issuer: '', date: '', type: '' }])
+            setCerts([...certs, { title: "", issuer: "", date: "", type: "" }])
           }
         >
           + Add Certification/Award
+        </button>
+      </div>
+
+      {/* Supplemental Questions and Information */}
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}> Supplemental QA </h2>
+        {supplementalQa.map((supplementalQaRow, i) => (
+          <div key={i} className={styles.card}>
+            <div className={styles.formGroup}>
+              <label className={styles.label}> Question</label>
+              <input
+                className={styles.input}
+                value={supplementalQaRow.question ?? ""}
+                onChange={(e) => {
+                  const updated = [...supplementalQa];
+                  updated[i] = {
+                    ...supplementalQaRow,
+                    question: e.target.value,
+                  };
+                  setSupplementalQA(updated);
+                }}
+              />
+            </div>
+
+            <div className={styles.cardRow}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}> Answer </label>
+                <textarea
+                  className={styles.input}
+                  value={supplementalQaRow.answer ?? ""}
+                  onChange={(e) => {
+                    const updated = [...supplementalQa];
+                    updated[i] = {
+                      ...supplementalQaRow,
+                      answer: e.target.value,
+                    };
+                    setSupplementalQA(updated);
+                  }}
+                />
+              </div>
+            </div>
+            <button
+              className={styles.removeButton}
+              onClick={() =>
+                setSupplementalQA(supplementalQa.filter((_, idx) => idx !== i))
+              }
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <button
+          className={styles.addButton}
+          onClick={() =>
+            setSupplementalQA([...supplementalQa, { question: "", answer: "" }])
+          }
+        >
+          + Add Supplemental Info
         </button>
       </div>
 

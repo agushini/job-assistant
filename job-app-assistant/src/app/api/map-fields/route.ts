@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, TEST_USER_ID } from "@/db";
-import { profiles, workExperiences, education } from "@/db/schema";
+import {
+  profiles,
+  workExperiences,
+  education,
+  supplementalQa,
+} from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -33,8 +38,14 @@ const mappingSchema = {
               description:
                 '"high", "medium", or "low" — how confident this mapping is',
             },
+            fieldCategory: {
+              type: "string",
+              enum: ["factual", "subjective_rating", "open_ended", "eeo"],
+              description:
+                'factual = objective lookup (name, dates, schools). subjective_rating = self-assessment scale (e.g. "rate your familiarity 1-5"). open_ended = free-text question needing a real written answer (e.g. "why do you want to work here"). eeo = demographic self-ID field.',
+            },
           },
-          required: ["fieldIndex", "value", "confidence"],
+          required: ["fieldIndex", "value", "confidence", "fieldCategory"],
         },
       },
     },
@@ -72,71 +83,85 @@ export async function POST(req: NextRequest) {
       .from(education)
       .where(eq(education.profileId, profile.id));
 
+    const supplementalQaRows = await db
+      .select()
+      .from(supplementalQa)
+      .where(eq(supplementalQa.profileId, profile.id));
+
     const useRealApi = process.env.USE_CLAUDE_API === "true";
 
-   if (!useRealApi) {
-  const mockMappings = fillableFields.map((f: any) => {
-    const label = (f.associatedLabel || f.nearbyText || f.placeholder || f.id || '').toLowerCase();
+    if (!useRealApi) {
+      const mockMappings = fillableFields.map((f: any) => {
+        const label = (
+          f.associatedLabel ||
+          f.nearbyText ||
+          f.placeholder ||
+          f.id ||
+          f.fieldCategory ||
+          ""
+        ).toLowerCase();
 
-    let value = '';
-    let confidence = 'low';
+        let value = "";
+        let confidence = "low";
+        let fieldCategory = "factual";
 
-    if (label.includes('first name')) {
-      value = 'Jordan';
-      confidence = 'high';
-    } else if (label.includes('last name')) {
-      value = 'Rivera';
-      confidence = 'high';
-    } else if (label.includes('preferred name')) {
-      value = 'Jordan';
-      confidence = 'high';
-    } else if (label.includes('email')) {
-      value = 'jordan.rivera@example.com';
-      confidence = 'high';
-    } else if (label.includes('phone')) {
-      value = '555-0182';
-      confidence = 'high';
-    } else if (label.includes('location') || label.includes('city')) {
-      value = 'Austin, TX';
-      confidence = 'high';
-    } else if (label.includes('country')) {
-      value = 'United States';
-      confidence = 'medium';
-    } else if (label.includes('school') || label.includes('university')) {
-      value = 'Sample State University';
-      confidence = 'high';
-    } else if (label.includes('degree')) {
-      value = "Bachelor's";
-      confidence = 'high';
-    } else if (label.includes('discipline') || label.includes('major')) {
-      value = 'Computer Science';
-      confidence = 'high';
-    } else if (label.includes('start-month')) {
-      value = 'August';
-      confidence = 'high';
-    } else if (label.includes('start-year')) {
-      value = '2018';
-      confidence = 'high';
-    } else if (label.includes('end-month')) {
-      value = 'May';
-      confidence = 'high';
-    } else if (label.includes('end-year')) {
-      value = '2022';
-      confidence = 'high';
-    } else if (f.tag === 'SELECT' || f.tag === 'INPUT') {
-      // Leave unmatched fields (free-text questions, unknowns) empty, as real mapping would
-      value = '';
-      confidence = 'low';
+        if (label.includes("first name")) {
+          value = "Jordan";
+          confidence = "high";
+        } else if (label.includes("last name")) {
+          value = "Rivera";
+          confidence = "high";
+        } else if (label.includes("preferred name")) {
+          value = "Jordan";
+          confidence = "high";
+        } else if (label.includes("email")) {
+          value = "jordan.rivera@example.com";
+          confidence = "high";
+        } else if (label.includes("phone")) {
+          value = "555-0182";
+          confidence = "high";
+        } else if (label.includes("location") || label.includes("city")) {
+          value = "Austin, TX";
+          confidence = "high";
+        } else if (label.includes("country")) {
+          value = "United States";
+          confidence = "medium";
+        } else if (label.includes("school") || label.includes("university")) {
+          value = "Sample State University";
+          confidence = "high";
+        } else if (label.includes("degree")) {
+          value = "Bachelor's";
+          confidence = "high";
+        } else if (label.includes("discipline") || label.includes("major")) {
+          value = "Computer Science";
+          confidence = "high";
+        } else if (label.includes("start-month")) {
+          value = "August";
+          confidence = "high";
+        } else if (label.includes("start-year")) {
+          value = "2018";
+          confidence = "high";
+        } else if (label.includes("end-month")) {
+          value = "May";
+          confidence = "high";
+        } else if (label.includes("end-year")) {
+          value = "2022";
+          confidence = "high";
+        } else if (f.tag === "SELECT" || f.tag === "INPUT") {
+          // Leave unmatched fields (free-text questions, unknowns) empty, as real mapping would
+          value = "";
+          confidence = "low";
+        }
+
+        return {
+          fieldIndex: f.index,
+          value,
+          confidence,
+          fieldCategory,
+        };
+      });
+      return NextResponse.json({ mappings: mockMappings, mock: true });
     }
-
-    return {
-      fieldIndex: f.index,
-      value,
-      confidence,
-    };
-  });
-  return NextResponse.json({ mappings: mockMappings, mock: true });
-}
 
     const profileContext = {
       fullName: profile.fullName,
@@ -146,6 +171,7 @@ export async function POST(req: NextRequest) {
       skills: profile.skills,
       workExperiences: workExp,
       education: edu,
+      supplementalQa: supplementalQaRows,
     };
 
     const message = await anthropic.messages.create({
@@ -156,7 +182,21 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: `Here is a candidate's profile data:\n${JSON.stringify(profileContext, null, 2)}\n\nHere are form fields detected on a job application page:\n${JSON.stringify(fillableFields, null, 2)}\n\nFor each field, determine what profile value (if any) should fill it. Use the field's associatedLabel first, falling back to nearbyText, placeholder, or name/id if needed.\n\nOnly return a high or medium confidence value for fields asking for objective facts directly present in the profile data (name, contact info, dates, schools, job titles, etc.).\n\nFor fields asking the candidate to rate themselves, share an opinion, self-assess a skill level, or answer any subjective question — even if you could infer a plausible answer from the profile — always return an empty string with "low" confidence. These require the candidate's own judgment, not an inferred guess.\n\nFor open-ended free-text questions (e.g. "why do you want to work here," "describe a time when...") always return an empty string with "low" confidence — these will be handled separately.`,
+          content: `Here is a candidate's profile data:\n${JSON.stringify(profileContext, null, 2)}\n\n
+          Here are form fields detected on a job application page:\n${JSON.stringify(fillableFields, null, 2)}\n\n
+          For each field, determine what profile value (if any) should fill it. Use the field's associatedLabel first, 
+          falling back to nearbyText, placeholder, or name/id if needed. 
+          Only return a high or medium confidence value for fields asking for objective facts directly present in the
+          profile data (name, contact info, dates, schools, job titles, etc.). 
+          For fields asking the candidate to rate themselves, share an opinion, self-assess a skill level, or answer any 
+          subjective question — even if you could infer a plausible answer from the profile — always return an empty string 
+          with "low" confidence. These require the candidate's own judgment, not an inferred guess.\n\nFor open-ended free-text 
+          questions (e.g. "why do you want to work here," "describe a time when...") always return an empty string with "low" 
+          confidence — these will be handled separately.
+          If a field includes an "options" array, you MUST return a value that exactly matches one of the given strings (or empty 
+          string if none genuinely apply). Categorize these fields as "factual", never "open_ended" — 
+          selecting among a fixed list is a lookup task, not free writing.
+          `,
         },
       ],
     });

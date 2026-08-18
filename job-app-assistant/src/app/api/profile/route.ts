@@ -1,7 +1,13 @@
-import { NextResponse } from 'next/server';
-import { db, TEST_USER_ID } from '@/db';
-import { profiles, workExperiences, education, certificationsAwards } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { NextResponse } from "next/server";
+import { db, TEST_USER_ID } from "@/db";
+import {
+  profiles,
+  workExperiences,
+  education,
+  certificationsAwards,
+  supplementalQa,
+} from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -13,7 +19,7 @@ export async function GET() {
       .limit(1);
 
     if (!profile) {
-      return NextResponse.json({ error: 'No profile found' }, { status: 404 });
+      return NextResponse.json({ error: "No profile found" }, { status: 404 });
     }
 
     const workExp = await db
@@ -31,22 +37,37 @@ export async function GET() {
       .from(certificationsAwards)
       .where(eq(certificationsAwards.profileId, profile.id));
 
+    const supplementalQaRows = await db
+      .select()
+      .from(supplementalQa)
+      .where(eq(supplementalQa.profileId, profile.id));
+
     return NextResponse.json({
       profile,
       workExperiences: workExp,
       education: edu,
       certificationsAwards: certs,
+      supplementalQa: supplementalQaRows,
     });
   } catch (error) {
-    console.error('Fetch profile error:', error);
-    return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
+    console.error("Fetch profile error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch profile" },
+      { status: 500 },
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { profile, workExperiences: workExp, education: edu, certificationsAwards: certs } = body;
+    const {
+      profile,
+      workExperiences: workExp,
+      education: edu,
+      certificationsAwards: certs,
+      supplementalQa: supplementalQaRows,
+    } = body;
 
     // Update the main profile fields
     await db
@@ -63,9 +84,16 @@ export async function PUT(req: Request) {
 
     // For related tables, simplest approach for now: delete all existing rows, re-insert current state.
     // This correctly handles adds/removes/edits without needing to track individual row changes.
-    await db.delete(workExperiences).where(eq(workExperiences.profileId, profile.id));
+    await db
+      .delete(workExperiences)
+      .where(eq(workExperiences.profileId, profile.id));
     await db.delete(education).where(eq(education.profileId, profile.id));
-    await db.delete(certificationsAwards).where(eq(certificationsAwards.profileId, profile.id));
+    await db
+      .delete(certificationsAwards)
+      .where(eq(certificationsAwards.profileId, profile.id));
+    await db
+      .delete(supplementalQa)
+      .where(eq(supplementalQa.profileId, profile.id));
 
     if (workExp.length > 0) {
       await db.insert(workExperiences).values(
@@ -77,7 +105,7 @@ export async function PUT(req: Request) {
           endDate: exp.endDate,
           bulletPoints: exp.bulletPoints,
           order: index,
-        }))
+        })),
       );
     }
 
@@ -91,7 +119,7 @@ export async function PUT(req: Request) {
           minor: e.minor,
           startDate: e.startDate,
           endDate: e.endDate,
-        }))
+        })),
       );
     }
 
@@ -103,13 +131,26 @@ export async function PUT(req: Request) {
           issuer: c.issuer,
           date: c.date,
           type: c.type,
-        }))
+        })),
+      );
+    }
+
+    if (supplementalQaRows.length > 0) {
+      await db.insert(supplementalQa).values(
+        supplementalQaRows.map((qa: { question: string; answer: string }) => ({
+          profileId: profile.id,
+          question: qa.question,
+          answer: qa.answer,
+        })),
       );
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Update profile error:', error);
-    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
+    console.error("Update profile error:", error);
+    return NextResponse.json(
+      { error: "Failed to update profile" },
+      { status: 500 },
+    );
   }
 }
