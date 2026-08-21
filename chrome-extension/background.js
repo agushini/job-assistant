@@ -1,4 +1,4 @@
-console.log("Job Application Assistant: background service worker started");
+// background.js
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("Background worker received message:", message);
@@ -16,22 +16,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleFieldsDetected(message, sender) {
-  // Step 1: factual mapping + categorization (Haiku)
+  // Step 1: factual mapping + categorization (Gemini/Claude Haiku)
   const mapResponse = await fetch("http://localhost:3000/api/map-fields", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       fields: message.fields,
-      jobDescription: message.jobDescription, // <- was missing before, now forwarded
+      jobDescription: message.jobDescription, 
       url: sender.tab?.url,
     }),
   });
+
+  // Check if the response failed and log the HTML/Text error
+  if (!mapResponse.ok) {
+    const errorText = await mapResponse.text();
+    console.error(`map-fields failed with status ${mapResponse.status}:`, errorText.slice(0, 500)); // Log first 500 chars of the HTML
+    throw new Error(`Server returned ${mapResponse.status} for map-fields`);
+  }
+
   const mapData = await mapResponse.json();
   console.log("map-fields responded:", mapData);
 
   let finalMappings = mapData.mappings ?? [];
 
-  // Step 2: find fields Haiku flagged as needing a real written answer
+  // Step 2: find fields flagged as needing a real written answer
   const openEndedMappings = finalMappings.filter(
     (m) => m.fieldCategory === "open_ended",
   );
@@ -59,8 +67,16 @@ async function handleFieldsDetected(message, sender) {
           jobDescription: message.jobDescription,
           fields: fieldsForGeneration,
         }),
-      },
+      }
     );
+
+    // Check generation response too
+    if (!genResponse.ok) {
+      const genErrorText = await genResponse.text();
+      console.error(`generate-answers failed with status ${genResponse.status}:`, genErrorText.slice(0, 500));
+      throw new Error(`Server returned ${genResponse.status} for generate-answers`);
+    }
+
     const genData = await genResponse.json();
     console.log("generate-answers responded:", genData);
 

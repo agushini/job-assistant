@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
 
     const extractedText = await extractTextFromFile(file);
 
-    const useRealApi = process.env.USE_CLAUDE_API === "true";
+    const useRealApi = process.env.USE_LLM_API === "true";
 
     if (!useRealApi) {
       return NextResponse.json({

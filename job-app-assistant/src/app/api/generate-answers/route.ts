@@ -9,7 +9,7 @@ import {
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 
-const useRealApi = process.env.USE_CLAUDE_API === "true";
+const useRealApi = process.env.USE_LLM_API === "true";
 
 export async function POST(req: Request) {
   const { jobDescription, fields } = await req.json();
